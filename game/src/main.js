@@ -36,8 +36,13 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// Leaving the page saves progress, so a closed tab never loses a run.
+window.addEventListener('pagehide', () => {
+  if (game.screen === SCREEN_PLAY || game.screen === SCREEN_PAUSE) game.save();
+});
+
 // Screenshot mode: stage a deterministic scene, draw one frame on the next
-// animation frame (after layout), then stop.
+// animation frame (after layout), then stop — no game loop runs.
 if (shotName) {
   game.load();
   stageShot(shotName, game, sound);
@@ -48,8 +53,7 @@ if (shotName) {
   });
 } else {
   game.load();
-  if (game.missionIndex > 0) game.startMission(game.missionIndex);
-  else game.startMission(0);
+  game.startMission(game.missionIndex > 0 ? game.missionIndex : 0);
   game.screen = SCREEN_TITLE;
   announce('Sunset Streets — press Enter to start');
 

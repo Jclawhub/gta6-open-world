@@ -1,12 +1,13 @@
-// Solmar Bay — tuning and layout constants for "Sunset Streets".
-// All values are in world pixels unless noted. The world is a grid city:
-// vertical avenues and horizontal streets with blocks of buildings between them.
+// Sunset Streets — tuning for the fictional coastal city of Solmar Bay.
+// Every distance is in world pixels unless a comment says otherwise. The city
+// is a grid: vertical avenues and horizontal streets, with building blocks
+// tucked into the cells between the roads.
 export const WORLD = {
   width: 3600,
   height: 2700,
-  block: 300, // block size (building block + road pitch)
-  road: 72, // road width
-  sidewalk: 18,
+  block: 300, // pitch from one road centre line to the next
+  road: 72, // width of a road strip
+  sidewalk: 18, // pavement ring around each building block
 };
 
 export const PLAYER = {
@@ -16,32 +17,37 @@ export const PLAYER = {
   health: 100,
   punchDamage: 12,
   punchRange: 34,
-  punchCooldown: 0.38,
+  punchCooldown: 0.38, // seconds between punches
 };
 
 export const CAR = {
   length: 54,
   width: 26,
-  accel: 420,
+  accel: 420, // px/s^2 when the throttle is down
   brake: 620,
   maxSpeed: 460,
   maxReverse: 150,
-  turnRate: 2.9,
-  drag: 0.9,
+  turnRate: 2.9, // radians per second at full lock
+  drag: 0.9, // coasting slowdown factor
 };
 
+// How the Solmar Bay PD behaves. Ramming and busting are tuned to pressure
+// the player, not to end a run in one touch.
 export const POLICE = {
   chaseSpeed: 430,
-  ramDamage: 6,
-  ramCooldown: 1.2, // seconds between rams from the same cop: pressure, not a shredder
-  arrestRange: 46,
-  bustTime: 3.0, // on-foot busted timer: fair enough to sprint away from
+  ramDamage: 6, // health lost to one ram while driving
+  ramCooldown: 1.2, // seconds between rams from the same unit
+  arrestRange: 46, // how close a foot officer must be to start a bust
+  bustTime: 3.0, // seconds inside arrest range before you are busted
   footSpeed: 190,
-  sprintEscapeFactor: 0.5, // bust timer builds half as fast while you sprint
+  sprintEscapeFactor: 0.5, // bust timer builds half as fast while sprinting
 };
 
+// The air unit was cut for the round-4 rewrite: the chase stays on the
+// ground (cars + officers on foot) to keep the build tight and testable.
+
 export const WANTED = {
-  decaySeconds: 10, // seconds out of sight before one star drops
+  decaySeconds: 10, // seconds fully out of sight before one star drops
   starsForKill: 1,
   starsForSteal: 1,
   maxStars: 5,
@@ -57,6 +63,7 @@ export const COLORS = {
   building: ['#c96f4a', '#4a7fa5', '#a5a44a', '#8a5fa0', '#5fa08a', '#b04a6a'],
   player: '#ffd23f',
   police: '#2f6fd0',
+  heli: '#22303f',
   traffic: ['#d94f3d', '#3d7dd9', '#e8e8e8', '#4caf50', '#ff9800', '#9c27b0'],
 };
 
@@ -114,7 +121,8 @@ export const MISSIONS = [
   },
 ];
 
-// Crash and skid effects: how long a skid mark lives, and how many the game keeps.
+// Crash and skid effects: skid-mark lifetime, how many the game keeps,
+// how long smoke hangs, and how many sparks a hard impact throws.
 export const EFFECTS = {
   skidLife: 6,
   maxSkids: 150,
@@ -124,7 +132,7 @@ export const EFFECTS = {
 
 export const SAVE_KEY = 'sunset-streets-save-v1';
 
-// What a new game starts with: a little cash and a box of pistol ammo.
+// A new game starts with a little cash and a box of pistol ammo.
 export const STARTING = {
   money: 120,
   ammo: 24,

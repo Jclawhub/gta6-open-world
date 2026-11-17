@@ -1,11 +1,13 @@
-// Keyboard and mouse input. Tracks held keys and the mouse position in screen space,
-// plus edge-triggered "just pressed" keys the game loop consumes each frame.
+// Keyboard and mouse input. Tracks held keys and the mouse position in
+// screen space, plus edge-triggered "just pressed" keys that the game loop
+// consumes once per frame.
 export class Input {
   constructor(canvas) {
+    this.canvas = canvas;
     this.keys = new Set();
     this.pressed = new Set();
     this.mouse = { x: 0, y: 0, down: false, movedAt: 0 };
-    this.canvas = canvas;
+
     this.onKeyDown = (event) => {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(event.key)) {
         event.preventDefault();
@@ -36,17 +38,22 @@ export class Input {
       this.mouse.down = false;
     };
     this.onContextMenu = (event) => event.preventDefault();
+
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    window.addEventListener('mouseup', this.onMouseUp);
     canvas.addEventListener('mousemove', this.onMouseMove);
     canvas.addEventListener('mousedown', this.onMouseDown);
     canvas.addEventListener('contextmenu', this.onContextMenu);
-    window.addEventListener('mouseup', this.onMouseUp);
   }
 
   down(key) {
     return this.keys.has(key.toLowerCase());
+  }
+
+  justPressed(key) {
+    return this.pressed.has(key.toLowerCase());
   }
 
   // Mouse aim: the angle from a screen point (sx, sy) to the mouse, or null
@@ -56,11 +63,8 @@ export class Input {
     return Math.atan2(this.mouse.y - sy, this.mouse.x - sx);
   }
 
-  justPressed(key) {
-    return this.pressed.has(key.toLowerCase());
-  }
-
-  // WASD / arrow movement vector, normalised.
+  // WASD / arrow movement vector, normalised so diagonals are not faster.
+  // Shift is the sprint key; it is read separately by the game loop.
   moveVector() {
     let x = 0;
     let y = 0;
@@ -91,9 +95,9 @@ export class Input {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
+    window.removeEventListener('mouseup', this.onMouseUp);
     this.canvas.removeEventListener('mousemove', this.onMouseMove);
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
-    window.removeEventListener('mouseup', this.onMouseUp);
   }
 }

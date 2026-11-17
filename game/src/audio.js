@@ -1,5 +1,6 @@
-// All sound is synthesized with WebAudio — no audio files. A tiny synth for effects
-// (shots, punches, pickups, sirens, engine hum) and a simple bass-and-hat music loop.
+// All sound is synthesized with WebAudio — no audio files. A tiny synth for
+// effects (shots, punches, pickups, sirens, engine hum) and a simple
+// bass-and-hat music loop that plays while the game runs.
 export class SoundBank {
   constructor() {
     this.ctx = null;
@@ -10,6 +11,8 @@ export class SoundBank {
     this.step = 0;
   }
 
+  // Create (or resume) the audio context. Returns false when audio is not
+  // available, so every sound call can bail out silently.
   ensure() {
     if (this.ctx) {
       if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -32,6 +35,7 @@ export class SoundBank {
     if (this.master) this.master.gain.value = muted ? 0 : 0.5;
   }
 
+  // One oscillator note, optionally sliding down to another frequency.
   tone(freq, duration, type = 'square', volume = 0.2, slideTo = null) {
     if (!this.ensure() || this.muted) return;
     const t0 = this.ctx.currentTime;
@@ -39,7 +43,9 @@ export class SoundBank {
     const gain = this.ctx.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t0);
-    if (slideTo !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + duration);
+    if (slideTo !== null) {
+      osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + duration);
+    }
     gain.gain.setValueAtTime(volume, t0);
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     osc.connect(gain);
@@ -48,13 +54,16 @@ export class SoundBank {
     osc.stop(t0 + duration + 0.02);
   }
 
+  // A burst of filtered noise that fades out — the base of crashes and shots.
   noise(duration, volume = 0.2, lowpass = 1200) {
     if (!this.ensure() || this.muted) return;
     const t0 = this.ctx.currentTime;
     const length = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
     const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+    for (let i = 0; i < length; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+    }
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     const filter = this.ctx.createBiquadFilter();
@@ -113,25 +122,31 @@ export class SoundBank {
   }
 
   engine(on) {
-    if (!this.ensure()) return;
-    if (!on) return;
+    if (!this.ensure() || !on) return;
     this.tone(70, 0.12, 'sawtooth', 0.05, 110);
   }
 
   missionDone() {
-    [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.tone(f, 0.22, 'triangle', 0.22), i * 110));
+    [523, 659, 784, 1046].forEach((f, i) => {
+      setTimeout(() => this.tone(f, 0.22, 'triangle', 0.22), i * 110);
+    });
+  }
+
+  // Music sits a little lower than effects so the sirens cut through.
+  setMusicVolume(v) {
+    this.musicVolume = v;
   }
 
   startMusic() {
     if (this.musicOn || !this.ensure()) return;
     this.musicOn = true;
-    // Chill coastal groove: bass line + hats, 112 BPM eighth notes.
+    // Chill coastal groove: bass line plus hats, 112 BPM eighth notes.
     const bass = [55, 0, 65.4, 0, 49, 0, 58.3, 0, 55, 0, 65.4, 0, 73.4, 0, 65.4, 0];
     const stepMs = 60000 / 112 / 2;
     this.musicTimer = setInterval(() => {
       if (this.muted) return;
       const note = bass[this.step % bass.length];
-      if (note > 0) this.tone(note, 0.22, 'triangle', 0.16);
+      if (note > 0) this.tone(note, 0.22, 'triangle', this.musicVolume ?? 0.16);
       if (this.step % 2 === 0) this.noise(0.03, 0.05, 8000);
       this.step += 1;
     }, stepMs);

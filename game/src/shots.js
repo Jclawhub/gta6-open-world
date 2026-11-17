@@ -1,26 +1,15 @@
-// Deterministic screenshot scenes, in the starter's spirit: each scene plays the
-// real game forward from a fresh world for a fixed number of steps with a simple
-// autopilot, so the frame is what a short session really looks like and the same
-// seed always gives the same frame. Used with ?shot=finale|chase|mission|sprint|city|foot&seed=1.
+// Deterministic screenshot scenes: each scene plays the real game forward
+// from a fresh world for a fixed number of steps with a simple autopilot, so
+// the frame is what a short session really looks like and the same seed
+// always gives the same frame. Used with ?shot=finale|chase|mission|sprint|city|foot&seed=1.
 import { SCREEN_PLAY, SCREEN_TITLE } from './game.js';
 import { angleDelta } from './random.js';
 import { nearestRoadPoint } from './world.js';
 
-// Pull the pursuing police onto the road behind the player, in frame.
-function pullPoliceIntoFrame(game) {
-  for (const cop of game.police) {
-    const spot = nearestRoadPoint(
-      game.world,
-      game.player.x - 220 + game.police.indexOf(cop) * 90,
-      game.player.y + 130,
-    );
-    cop.car.x = spot.x;
-    cop.car.y = spot.y;
-    cop.car.speed = 380;
-  }
-}
-
 const STEP = 1 / 60;
+
+// The scenes the screenshot mode knows, in the order the dossier lists them.
+export const SHOT_SCENES = ['finale', 'sprint', 'city', 'chase', 'mission', 'foot'];
 
 // A fake input the autopilot steers: the scenes drive through the game's own
 // physics (throttle + steering), so the car accelerates, turns and skids the
@@ -36,8 +25,8 @@ function driverInput() {
   };
 }
 
+// Steer the player's car toward a target point, full throttle.
 function driveToward(game, input, tx, ty) {
-  // Steer the player's car toward a target point, full throttle.
   const car = game.player.inCar;
   if (!car) return;
   const want = Math.atan2(ty - car.y, tx - car.x);
@@ -55,7 +44,7 @@ function stepWorld(game, input, sound, steps) {
 
 // Route to a target along the road grid: the car drives down streets and
 // avenues (straight corridors with no buildings) instead of steering
-// diagonally through city blocks, where it used to get stuck ramming a corner.
+// diagonally through city blocks, where it used to get stuck on a corner.
 function routeWaypoints(game, tx, ty) {
   const nearest = (v, list) => list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
   const car = game.player.inCar;
@@ -94,6 +83,20 @@ function driveRoute(game, input, sound, tx, ty, maxSeconds) {
   input.state.steer = 0;
 }
 
+// Pull the pursuing police onto the road behind the player, in frame.
+function pullPoliceIntoFrame(game) {
+  for (const cop of game.police) {
+    const spot = nearestRoadPoint(
+      game.world,
+      game.player.x - 220 + game.police.indexOf(cop) * 90,
+      game.player.y + 130,
+    );
+    cop.car.x = spot.x;
+    cop.car.y = spot.y;
+    cop.car.speed = 380;
+  }
+}
+
 function putPlayerInCar(game) {
   const car = game.cars.find((c) => c.kind === 'parked');
   if (!car) return null;
@@ -108,22 +111,24 @@ export function stageShot(name, game, sound) {
   // Every scene drives through the same driver input; scenes that do not
   // drive leave its throttle at 0, which reads exactly like no keys.
   const input = driverInput();
-  const silent = { setMuted: () => {}, siren: () => {}, crash: () => {}, engine: () => {}, shot: () => {}, punch: () => {}, missionDone: () => {}, pickup: () => {}, skid: () => {}, checkpoint: () => {}, honk: () => {} };
+  const silent = {
+    setMuted: () => {}, siren: () => {}, crash: () => {}, engine: () => {},
+    shot: () => {}, punch: () => {}, missionDone: () => {}, pickup: () => {},
+    skid: () => {}, checkpoint: () => {}, honk: () => {}, door: () => {},
+  };
   game.reset();
   game.screen = SCREEN_PLAY;
   if (name === 'finale') {
-    // The cover: the Vault Job mid-escape — two stars, police in pursuit, the
-    // Safehouse marker on the HUD and minimap, cash and traffic in frame.
+    // The cover: the Vault Job mid-escape — two stars, police in pursuit,
+    // the Safehouse marker on the HUD and minimap, cash and traffic in frame.
     game.startMission(5);
     game.player.x = 1800;
     game.player.y = 1400;
-    // Grab the vault case (adds two wanted stars) and get into a car.
     game.update(STEP, input, silent);
     putPlayerInCar(game);
-    // Drive to just outside the Safehouse completion radius (280px): the shot
+    // Drive to just outside the Safehouse completion radius: the shot
     // catches the escape in progress, not the win screen after delivery.
     driveRoute(game, input, silent, 1000, 650, 20);
-    // Pull the pursuing police into frame behind the player for the shot.
     pullPoliceIntoFrame(game);
     driveRoute(game, input, silent, 1000, 650, 2);
     return { screen: SCREEN_PLAY };
@@ -136,24 +141,24 @@ export function stageShot(name, game, sound) {
     return { screen: SCREEN_PLAY };
   }
   if (name === 'city') {
-    // Title screen over a living city: traffic and pedestrians move, camera on the player.
+    // Title screen over a living city: traffic and pedestrians move, camera
+    // on the player.
     game.screen = SCREEN_TITLE;
     stepWorld(game, input, silent, 8 * 60);
     return { screen: SCREEN_TITLE };
   }
   if (name === 'chase') {
     // Player in a car, three stars, police in pursuit, mid-chase.
-    // startMission('getaway') already puts three stars on the player.
+    // startMission(2) already puts three stars on the player.
     game.startMission(2);
     putPlayerInCar(game);
     driveRoute(game, input, silent, 900, 500, 16);
-    // Pull the pursuing police into frame behind the player for the shot.
     pullPoliceIntoFrame(game);
     driveRoute(game, input, silent, 900, 500, 2);
     return { screen: SCREEN_PLAY };
   }
   if (name === 'mission') {
-    // Mission 1 in progress: driving to the Marina pickup, objective on the HUD.
+    // Mission 1 in progress: driving to the Marina pickup, objective on HUD.
     game.startMission(0);
     putPlayerInCar(game);
     driveRoute(game, input, silent, 650, 2300, 14);

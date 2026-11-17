@@ -28,7 +28,7 @@ Then open the printed URL in a desktop browser — or serve `game/` with any sta
 
 - A grid city with a beach, marina, central plaza, docks and Old Town — plus a plaza fountain, the Sunset Pier and rooftop billboards — with traffic cars and pedestrians that wander, jog, linger as tourists, panic and flee
 - Car stealing and driving, with a five-star wanted level and police cars that chase and ram with a cooldown between rams, plus police on foot who try to bust you (sprint away to buy time)
-- Six story missions (taxi fare, timed delivery, police getaway, stash run, checkpoint sprint race, bank vault job) plus cash pickups to collect
+- Six story missions (taxi fare, timed delivery, police getaway, stash run, checkpoint sprint race, bank vault job) plus cash pickups to collect — finishing a job patches your health up a little, so the full chain stays survivable
 - Crash sparks and smoke, skid marks when braking hard, a waypoint arrow to off-screen objectives, and a mission-complete banner when a job pays out
 - HUD with health, money, ammo, wanted stars, a minimap and a mission tracker; title, pause, game-over and win screens; save/load via localStorage; the tab auto-pauses when hidden
 - Synthesized WebAudio sound effects and a music loop — no audio files
@@ -39,7 +39,7 @@ The `screenshots/` folder holds four real renders of the game itself:
 
 1. `1-city.jpg` — the cover: a Vault Job getaway in progress, two wanted stars, a police chase, the mission tracker, the minimap and the HUD in one frame.
 2. `2-chase.jpg` — a high-speed police chase through downtown Solmar Bay.
-3. `3-mission.jpg` — Marco Reyes' first fare, picking up a client at Marina.
+3. `3-mission.jpg` — the first fare, picking up a client at Marina.
 4. `4-sprint.jpg` — the Sunset Sprint: racing the 75-second clock to the first checkpoint.
 
 ---

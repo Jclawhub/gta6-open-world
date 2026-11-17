@@ -1,5 +1,6 @@
-// Sunset Streets — the game simulation: player on foot and in cars, traffic,
-// pedestrians, police and the wanted system, combat, missions and pickups.
+// Sunset Streets — the game simulation: the player on foot and in cars,
+// traffic, pedestrians, police and the wanted system, combat, missions and
+// pickups, plus the crash and celebration effects.
 import { WORLD, PLAYER, CAR, POLICE, WANTED, MISSIONS, COLORS, EFFECTS, SAVE_KEY, STARTING } from './config.js';
 import { buildWorld, collideCircle, nearestRoadPoint, districtByName } from './world.js';
 import { mulberry32, range, pick, weightedPick, gauss, clamp, dist, angleTo, angleDelta } from './random.js';
@@ -29,7 +30,8 @@ function makeCar(rng, x, y, angle, color, kind) {
 
 function makePed(rng, x, y, nearBeach = false) {
   // Walkers stroll, joggers hurry, tourists linger near the beach and plaza.
-  const kind = nearBeach ? weightedPick(rng, ['walker', 'jogger', 'tourist'], [0.45, 0.2, 0.35])
+  const kind = nearBeach
+    ? weightedPick(rng, ['walker', 'jogger', 'tourist'], [0.45, 0.2, 0.35])
     : weightedPick(rng, ['walker', 'jogger', 'tourist'], [0.65, 0.25, 0.1]);
   const speed = kind === 'jogger' ? range(rng, 110, 160)
     : kind === 'tourist' ? range(rng, 20, 40)
@@ -45,6 +47,12 @@ function makePed(rng, x, y, nearBeach = false) {
     pause: 0,
     panic: 0,
   };
+}
+
+// Where a police unit is right now: on foot it walks on its own feet, in a
+// car it is where its car is.
+function copPos(cop) {
+  return cop.onFoot ? { x: cop.x, y: cop.y } : { x: cop.car.x, y: cop.car.y };
 }
 
 export class Game {
@@ -68,7 +76,7 @@ export class Game {
       inCar: null,
       punchTimer: 0,
       shootTimer: 0,
-      sprint: false,
+      sprinting: false,
     };
     this.cars = [];
     this.peds = [];
@@ -86,6 +94,7 @@ export class Game {
     this.missionTimer = 0;
     this.missionDone = false;
     this.sprintCount = 0;
+    this.pickupTimer = 0;
     this.completeFlash = 0;
     this.lastReward = 0;
     this.camera = { x: 0, y: 0 };
@@ -95,7 +104,7 @@ export class Game {
     this.shake = 0;
     this.skidTimer = 0;
     this.stats = { carsStolen: 0, missionsDone: 0, pedsDown: 0 };
-    // Parked cars along the avenues.
+    // Parked cars along the avenues and streets.
     for (let i = 0; i < 34; i += 1) {
       const avenue = pick(rng, this.world.avenues);
       const street = pick(rng, this.world.streets);
@@ -109,13 +118,15 @@ export class Game {
       const avenue = pick(rng, this.world.avenues);
       const street = pick(rng, this.world.streets);
       const vertical = rng() > 0.5;
-      const car = makeCar(rng, vertical ? avenue : range(rng, 300, WORLD.width - 300), vertical ? range(rng, 300, WORLD.height - 300) : street, vertical ? Math.PI / 2 : 0, null, 'traffic');
+      const x = vertical ? avenue : range(rng, 300, WORLD.width - 300);
+      const y = vertical ? range(rng, 300, WORLD.height - 300) : street;
+      const car = makeCar(rng, x, y, vertical ? Math.PI / 2 : 0, null, 'traffic');
       car.vertical = vertical;
       car.speed = car.targetSpeed;
       this.cars.push(car);
     }
-    // Pedestrians on sidewalks: most wander the city, a few linger by the
-    // beach and plaza as tourists.
+    // Pedestrians on the sidewalks: most wander the city, a few linger by
+    // the beach and the plaza as tourists.
     for (let i = 0; i < 48; i += 1) {
       this.peds.push(makePed(rng, range(rng, 150, WORLD.width - 150), range(rng, 150, WORLD.height - 150)));
     }
@@ -145,12 +156,13 @@ export class Game {
     return MISSIONS[this.missionIndex] ?? null;
   }
 
+  // The current objective as a map rectangle (or a pickup point), so the
+  // renderer can draw the marker and the waypoint arrow.
   missionTarget() {
     const m = this.currentMission();
     if (!m) return null;
     if (m.id === 'fare') {
-      if (this.missionStep === 0) return districtByName('Marina');
-      if (this.missionStep === 1) return districtByName('Marina');
+      if (this.missionStep <= 1) return districtByName('Marina');
       return districtByName('Grand Hotel');
     }
     if (m.id === 'delivery') {
@@ -242,6 +254,8 @@ export class Game {
     this.stats.missionsDone += 1;
     this.missionDone = true;
     this.completeFlash = 2.5;
+    // Finishing a job patches you up a little: the chain stays survivable.
+    this.player.health = Math.min(PLAYER.health, this.player.health + 25);
     this.celebrate();
     this.say(`Mission complete — ${m.title} paid $${m.reward}!`, 4);
     this.missionIndex += 1;
@@ -323,9 +337,11 @@ export class Game {
       }
     }
     for (const cop of this.police) {
-      if (cop.onFoot && dist(px, py, cop.x, cop.y) < 34) {
+      if (!cop.onFoot) continue;
+      const pos = copPos(cop);
+      if (dist(px, py, pos.x, pos.y) < 34) {
         cop.health -= PLAYER.punchDamage;
-        this.burst(cop.x, cop.y, '#ffd23f');
+        this.burst(pos.x, pos.y, '#ffd23f');
       }
     }
   }
@@ -344,7 +360,11 @@ export class Game {
     }
     const ox = this.player.x + Math.cos(angle) * 26;
     const oy = this.player.y + Math.sin(angle) * 26;
-    this.bullets.push({ x: ox, y: oy, vx: Math.cos(angle) * 900, vy: Math.sin(angle) * 900, life: 0.9 });
+    this.bullets.push({
+      x: ox, y: oy,
+      vx: Math.cos(angle) * 900, vy: Math.sin(angle) * 900,
+      life: 0.9,
+    });
     this.shake = 3;
   }
 
@@ -405,7 +425,7 @@ export class Game {
       const car = makeCar(this.rng, near.x, near.y, 0, COLORS.police, 'police');
       car.speed = POLICE.chaseSpeed * 0.8;
       this.cars.push(car);
-      this.police.push({ car, onFoot: false, health: 40, sirenTimer: 0, ramTimer: 0 });
+      this.police.push({ car, onFoot: false, x: near.x, y: near.y, health: 40, sirenTimer: 0, ramTimer: 0 });
     }
   }
 
@@ -457,7 +477,7 @@ export class Game {
   updateOnFoot(dt, input) {
     const p = this.player;
     const mv = input.moveVector();
-    const speed = (input.down('shift') ? PLAYER.sprintSpeed : PLAYER.walkSpeed);
+    const speed = input.down('shift') ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
     p.sprinting = input.down('shift') && (mv.x !== 0 || mv.y !== 0);
     p.x += mv.x * speed * dt;
     p.y += mv.y * speed * dt;
@@ -527,7 +547,8 @@ export class Game {
       const nx = car.x + Math.cos(car.angle) * car.speed * dt;
       const ny = car.y + Math.sin(car.angle) * car.speed * dt;
       // Stay on the road: bounce off buildings and turn at map edges.
-      if (collideCircle(this.world, nx, ny, CAR.length / 2).x !== nx || collideCircle(this.world, nx, ny, CAR.length / 2).y !== ny) {
+      const probe = collideCircle(this.world, nx, ny, CAR.length / 2);
+      if (probe.x !== nx || probe.y !== ny) {
         car.angle += Math.PI / 2;
         car.stuck += 1;
         if (car.stuck > 4) {
@@ -583,7 +604,9 @@ export class Game {
       b.life -= dt;
       if (b.life <= 0) continue;
       for (const cop of this.police) {
-        if (cop.onFoot && dist(b.x, b.y, cop.x, cop.y) < 22) {
+        if (!cop.onFoot) continue;
+        const pos = copPos(cop);
+        if (dist(b.x, b.y, pos.x, pos.y) < 22) {
           cop.health -= 20;
           b.life = 0;
           this.burst(b.x, b.y, '#ffd23f');
@@ -597,7 +620,8 @@ export class Game {
           this.addWanted(WANTED.starsForKill);
         }
       }
-      if (collideCircle(this.world, b.x, b.y, 2).x !== b.x || collideCircle(this.world, b.x, b.y, 2).y !== b.y) {
+      const probe = collideCircle(this.world, b.x, b.y, 2);
+      if (probe.x !== b.x || probe.y !== b.y) {
         b.life = 0;
         this.burst(b.x, b.y, '#cccccc');
       }
@@ -605,7 +629,8 @@ export class Game {
     this.bullets = this.bullets.filter((b) => b.life > 0);
     this.police = this.police.filter((cop) => {
       if (cop.health <= 0) {
-        this.burst(cop.x, cop.y, '#2f6fd0');
+        const pos = copPos(cop);
+        this.burst(pos.x, pos.y, '#2f6fd0');
         this.addWanted(1);
         return false;
       }
@@ -623,16 +648,21 @@ export class Game {
         cop.sirenTimer = 2.4;
       }
       const car = cop.car;
-      const d = dist(car.x, car.y, this.player.x, this.player.y);
       if (this.wanted === 0) {
-        // Heat is off: police drift back to patrol.
+        // Heat is off: police drift back to patrol and stop chasing.
         car.speed = Math.max(0, car.speed - 200 * dt);
         continue;
       }
       if (cop.onFoot) {
-        const a = angleTo(car.x, car.y, this.player.x, this.player.y);
-        car.x += Math.cos(a) * POLICE.footSpeed * dt;
-        car.y += Math.sin(a) * POLICE.footSpeed * dt;
+        // On foot, the officer walks on his own position (cop.x/cop.y) — the
+        // car stays parked where he left it.
+        const a = angleTo(cop.x, cop.y, this.player.x, this.player.y);
+        cop.x += Math.cos(a) * POLICE.footSpeed * dt;
+        cop.y += Math.sin(a) * POLICE.footSpeed * dt;
+        const fixed = collideCircle(this.world, cop.x, cop.y, 11);
+        cop.x = fixed.x;
+        cop.y = fixed.y;
+        const d = dist(cop.x, cop.y, this.player.x, this.player.y);
         if (d < POLICE.arrestRange && !this.player.inCar) {
           // Sprinting away buys time: the bust timer builds half as fast.
           const rate = this.player.sprinting ? POLICE.sprintEscapeFactor : 1;
@@ -647,6 +677,7 @@ export class Game {
         }
         continue;
       }
+      const d = dist(car.x, car.y, this.player.x, this.player.y);
       // Chase in the car: steer at the player, ram when close.
       const wantAngle = angleTo(car.x, car.y, this.player.x, this.player.y);
       car.angle += clamp(angleDelta(car.angle, wantAngle), -2.6 * dt, 2.6 * dt);
@@ -682,9 +713,12 @@ export class Game {
         cop.y = car.y;
       }
     }
-    // Remove police cars that drifted far away once the heat is off.
+    // Remove police units that drifted far away once the heat is off.
     if (this.wanted === 0) {
-      this.police = this.police.filter((cop) => dist(cop.car.x, cop.car.y, this.player.x, this.player.y) < 900);
+      this.police = this.police.filter((cop) => {
+        const pos = copPos(cop);
+        return dist(pos.x, pos.y, this.player.x, this.player.y) < 900;
+      });
     }
   }
 
@@ -692,45 +726,43 @@ export class Game {
     for (const pk of this.pickups) pk.bob += dt * 3;
     const p = this.player;
     this.pickups = this.pickups.filter((pk) => {
-      if (dist(p.x, p.y, pk.x, pk.y) < 40) {
-        if (pk.kind === 'checkpoint') {
-          // Sunset Sprint: each checkpoint is a step toward the finish.
-          this.sprintCount += 1;
-          this.missionStep = this.sprintCount;
-          this.say(`Checkpoint ${this.sprintCount} of 3 — ${Math.ceil(this.missionTimer)}s left!`, 2);
-          if (sound && sound.checkpoint) sound.checkpoint();
-          this.burst(pk.x, pk.y, '#7fd4ff');
-          if (this.sprintCount >= 3) {
-            this.completeMission();
-            if (sound) sound.missionDone();
-          }
-          return false;
-        }
-        if (pk.kind === 'vaultcase') {
-          // Vault Job: the case is yours — and so is the heat that comes with it.
-          this.missionStep = 1;
-          this.addWanted(2);
-          this.say('Vault case secured! Get it to the Safehouse — 2 stars on you!', 3);
-          if (sound && sound.checkpoint) sound.checkpoint();
-          this.burst(pk.x, pk.y, '#ff8c00');
-          return false;
-        }
-        this.money += pk.amount;
-        this.say(`+$${pk.amount} ${pk.kind === 'stash' ? 'stash cash' : 'found cash'}!`, 2);
-        if (sound) sound.pickup();
-        if (pk.kind === 'stash') {
-          this.addWanted(1);
-          if (this.currentMission()?.id === 'stash') {
-            this.missionStep += 1;
-            if (this.missionStep >= 3) {
-              this.completeMission();
-              if (sound) sound.missionDone();
-            }
-          }
+      if (dist(p.x, p.y, pk.x, pk.y) >= 40) return true;
+      if (pk.kind === 'checkpoint') {
+        // Sunset Sprint: each checkpoint is a step toward the finish.
+        this.sprintCount += 1;
+        this.missionStep = this.sprintCount;
+        this.say(`Checkpoint ${this.sprintCount} of 3 — ${Math.ceil(this.missionTimer)}s left!`, 2);
+        if (sound && sound.checkpoint) sound.checkpoint();
+        this.burst(pk.x, pk.y, '#7fd4ff');
+        if (this.sprintCount >= 3) {
+          this.completeMission();
+          if (sound) sound.missionDone();
         }
         return false;
       }
-      return true;
+      if (pk.kind === 'vaultcase') {
+        // Vault Job: the case is yours — and so is the heat that comes with it.
+        this.missionStep = 1;
+        this.addWanted(2);
+        this.say('Vault case secured! Get it to the Safehouse — 2 stars on you!', 3);
+        if (sound && sound.checkpoint) sound.checkpoint();
+        this.burst(pk.x, pk.y, '#ff8c00');
+        return false;
+      }
+      this.money += pk.amount;
+      this.say(`+$${pk.amount} ${pk.kind === 'stash' ? 'stash cash' : 'found cash'}!`, 2);
+      if (sound) sound.pickup();
+      if (pk.kind === 'stash') {
+        this.addWanted(1);
+        if (this.currentMission()?.id === 'stash') {
+          this.missionStep += 1;
+          if (this.missionStep >= 3) {
+            this.completeMission();
+            if (sound) sound.missionDone();
+          }
+        }
+      }
+      return false;
     });
   }
 
@@ -755,7 +787,8 @@ export class Game {
     // Out of sight of every cop: heat slowly cools.
     let seen = false;
     for (const cop of this.police) {
-      if (dist(cop.car.x, cop.car.y, this.player.x, this.player.y) < 650) seen = true;
+      const pos = copPos(cop);
+      if (dist(pos.x, pos.y, this.player.x, this.player.y) < 650) seen = true;
     }
     if (!seen) {
       this.unseenTimer += dt;
@@ -801,54 +834,52 @@ export class Game {
     const radius = Math.max(target.w ?? 120, target.h ?? 120) / 2 + 30;
     // Leaving the fare pickup marker resets the client's walk-over timer.
     if (d >= radius && m.id === 'fare' && this.missionStep === 1) this.pickupTimer = 0;
-    if (d < radius) {
-      if (m.id === 'fare') {
-        if (this.missionStep === 0) {
-          this.missionStep = 1;
-          this.pickupTimer = 0;
-          this.say('Client spotted — stop in the marker to pick them up.', 3);
-        } else if (this.missionStep === 1) {
-          // Wait in the marker while the client walks over and gets in.
-          this.pickupTimer = (this.pickupTimer ?? 0) + dt;
-          if (this.pickupTimer > 1.2) {
-            this.missionStep = 2;
-            this.say('Client is in — drive them to the Grand Hotel.', 3);
-          }
-        } else if (this.missionStep === 2) {
-          this.completeMission();
-          if (sound) sound.missionDone();
+    if (d >= radius) return;
+    if (m.id === 'fare') {
+      if (this.missionStep === 0) {
+        this.missionStep = 1;
+        this.pickupTimer = 0;
+        this.say('Client spotted — stop in the marker to pick them up.', 3);
+      } else if (this.missionStep === 1) {
+        // Wait in the marker while the client walks over and gets in.
+        this.pickupTimer += dt;
+        if (this.pickupTimer > 1.2) {
+          this.missionStep = 2;
+          this.say('Client is in — drive them to the Grand Hotel.', 3);
         }
-      } else if (m.id === 'delivery') {
-        if (this.missionStep === 0) {
-          this.missionStep = 1;
-          this.missionTimer = m.timer;
-          this.say('Case secured! 90 seconds to the Docks — go!', 3);
-        } else if (this.missionStep === 1) {
-          this.completeMission();
-          if (sound) sound.missionDone();
-        }
-      } else if (m.id === 'getaway') {
-        if (this.wanted === 0) {
-          this.completeMission();
-          if (sound) sound.missionDone();
-        } else {
-          this.say('Too hot! Lose the cops first, then hide here.', 1.5);
-        }
-      } else if (m.id === 'stash') {
-        if (this.missionStep >= 3) {
-          this.completeMission();
-          if (sound) sound.missionDone();
-        }
-      } else if (m.id === 'sprint') {
-        // Checkpoints are collected by the pickup handler; nothing to do here.
-      } else if (m.id === 'vault') {
-        // Step 0 is the case pickup; step 1 completes at the Safehouse.
-        if (this.missionStep === 1) {
-          this.completeMission();
-          if (sound) sound.missionDone();
-        }
+      } else if (this.missionStep === 2) {
+        this.completeMission();
+        if (sound) sound.missionDone();
+      }
+    } else if (m.id === 'delivery') {
+      if (this.missionStep === 0) {
+        this.missionStep = 1;
+        this.missionTimer = m.timer;
+        this.say('Case secured! 90 seconds to the Docks — go!', 3);
+      } else if (this.missionStep === 1) {
+        this.completeMission();
+        if (sound) sound.missionDone();
+      }
+    } else if (m.id === 'getaway') {
+      if (this.wanted === 0) {
+        this.completeMission();
+        if (sound) sound.missionDone();
+      } else {
+        this.say('Too hot! Lose the cops first, then hide here.', 1.5);
+      }
+    } else if (m.id === 'stash') {
+      if (this.missionStep >= 3) {
+        this.completeMission();
+        if (sound) sound.missionDone();
+      }
+    } else if (m.id === 'vault') {
+      // Step 0 is the case pickup; step 1 completes at the Safehouse.
+      if (this.missionStep === 1) {
+        this.completeMission();
+        if (sound) sound.missionDone();
       }
     }
+    // 'sprint' checkpoints are collected by the pickup handler; nothing to do here.
   }
 
   // --- save / load ----------------------------------------------------------
@@ -878,8 +909,8 @@ export class Game {
       this.missionIndex = data.missionIndex ?? 0;
       this.stats = data.stats ?? this.stats;
       this.time = data.time ?? 0;
-      // startMission() (called by main.js after load) spawns the mission markers,
-      // so load() must not spawn them a second time.
+      // startMission() (called by main.js after load) spawns the mission
+      // markers, so load() must not spawn them a second time.
       return true;
     } catch {
       return false;

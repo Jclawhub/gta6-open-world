@@ -9,12 +9,13 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.camera = { x: 0, y: 0 };
+    this.dpr = 1;
   }
 
   resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    // Pin the canvas to the viewport explicitly: some headless windows report a
-    // smaller layout viewport than the screenshot size.
+    // Pin the canvas to the viewport explicitly: some headless windows report
+    // a smaller layout viewport than the screenshot size.
     this.canvas.style.width = `${window.innerWidth}px`;
     this.canvas.style.height = `${window.innerHeight}px`;
     this.canvas.width = Math.floor(window.innerWidth * dpr);
@@ -110,7 +111,7 @@ export class Renderer {
     for (const d of DISTRICTS) {
       ctx.fillText(d.name, d.x + d.w / 2 - cam.x, d.y + d.h / 2 - cam.y);
     }
-    // Landmarks: plaza fountain, wooden pier, rooftop billboards.
+    // Landmarks: plaza fountain, wooden pier, rooftop billboards, lighthouse.
     for (const lm of LANDMARKS) {
       if (lm.type === 'fountain') {
         ctx.fillStyle = '#3f8fbf';
@@ -179,6 +180,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(car.x - cam.x, car.y - cam.y);
       ctx.rotate(car.angle);
+      // Soft shadow under the car.
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(-CAR.length / 2 + 3, -CAR.width / 2 + 4, CAR.length, CAR.width);
       ctx.fillStyle = car.color;
@@ -352,6 +354,7 @@ export class Renderer {
     }
   }
 
+  // Pulsing ring + arrow over the current mission objective.
   drawMissionMarker(ctx, game) {
     const target = game.missionTarget();
     if (!target || game.screen !== 'play') return;
@@ -385,7 +388,7 @@ export class Renderer {
     const py = game.player.y - cam.y;
     const angle = Math.atan2(ty - py, tx - px);
     const margin = 46;
-    let ax = Math.max(margin, Math.min(vw - margin, px + Math.cos(angle) * 9999));
+    const ax = Math.max(margin, Math.min(vw - margin, px + Math.cos(angle) * 9999));
     let ay = Math.max(margin, Math.min(vh - margin, py + Math.sin(angle) * 9999));
     // Keep the arrow out of the HUD: health panel (top-left), wanted stars
     // (top-right), mission tracker (top-centre) and minimap (bottom-right).
@@ -438,16 +441,17 @@ export class Renderer {
     ctx.textAlign = 'center';
     let stars = '';
     for (let i = 0; i < 5; i += 1) stars += i < game.wanted ? '★' : '☆';
-    ctx.fillStyle = game.wanted > 0 ? '#ffd23f' : 'rgba(255,255,255,0.4)';
+    // Five stars is maximum heat: the stars burn red instead of gold.
+    ctx.fillStyle = game.wanted >= 5 ? '#ff5252' : game.wanted > 0 ? '#ffd23f' : 'rgba(255,255,255,0.4)';
     ctx.fillText(stars, vw - 102, 44);
     // Mission tracker, top centre.
     const m = game.currentMission();
     if (m) {
       const step = m.steps[game.missionStep] ?? m.steps[m.steps.length - 1];
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
       const label = `${m.title}: ${step}`;
       ctx.font = 'bold 14px system-ui, sans-serif';
       const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.beginPath();
       ctx.roundRect(vw / 2 - tw / 2 - 14, 14, tw + 28, 34, 10);
       ctx.fill();
@@ -462,8 +466,7 @@ export class Renderer {
     }
     // Mission-complete banner: big gold flash when a mission pays out.
     if (game.completeFlash > 0) {
-      const alpha = Math.min(1, game.completeFlash);
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = Math.min(1, game.completeFlash);
       ctx.fillStyle = '#ffd23f';
       ctx.font = 'bold 34px system-ui, sans-serif';
       ctx.textAlign = 'center';
@@ -472,9 +475,9 @@ export class Renderer {
     }
     // Message line.
     if (game.messageTimer > 0 && game.message) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.font = '14px system-ui, sans-serif';
       const tw = ctx.measureText(game.message).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.beginPath();
       ctx.roundRect(vw / 2 - tw / 2 - 12, vh - 96, tw + 24, 30, 8);
       ctx.fill();
