@@ -1,30 +1,49 @@
 // Deterministic screenshot scenes, in the starter's spirit: each scene plays the
 // real game forward from a fresh world for a fixed number of steps with a simple
 // autopilot, so the frame is what a short session really looks like and the same
-// seed always gives the same frame. Used with ?shot=city|chase|mission|foot&seed=1.
+// seed always gives the same frame. Used with ?shot=finale|chase|mission|sprint|city|foot&seed=1.
 import { SCREEN_PLAY, SCREEN_TITLE } from './game.js';
-import { collideCircle } from './world.js';
+import { angleDelta } from './random.js';
+import { nearestRoadPoint } from './world.js';
+
+// Pull the pursuing police onto the road behind the player, in frame.
+function pullPoliceIntoFrame(game) {
+  for (const cop of game.police) {
+    const spot = nearestRoadPoint(
+      game.world,
+      game.player.x - 220 + game.police.indexOf(cop) * 90,
+      game.player.y + 130,
+    );
+    cop.car.x = spot.x;
+    cop.car.y = spot.y;
+    cop.car.speed = 380;
+  }
+}
 
 const STEP = 1 / 60;
 
-function driveToward(game, tx, ty) {
-  // Steer the player's car toward a target point, full throttle, sliding along
-  // buildings instead of driving through them.
+// A fake input the autopilot steers: the scenes drive through the game's own
+// physics (throttle + steering), so the car accelerates, turns and skids the
+// way a player's car does instead of being teleported along.
+function driverInput() {
+  const state = { steer: 0, throttle: 0 };
+  return {
+    state,
+    justPressed: () => false,
+    down: () => false,
+    moveVector: () => ({ x: state.steer, y: state.throttle > 0 ? -1 : 0 }),
+    endFrame: () => {},
+  };
+}
+
+function driveToward(game, input, tx, ty) {
+  // Steer the player's car toward a target point, full throttle.
   const car = game.player.inCar;
   if (!car) return;
   const want = Math.atan2(ty - car.y, tx - car.x);
-  let d = want - car.angle;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  car.angle += Math.max(-2.4 * STEP, Math.min(2.4 * STEP, d));
-  car.speed = Math.min(430, car.speed + 420 * STEP);
-  const nx = car.x + Math.cos(car.angle) * car.speed * STEP;
-  const ny = car.y + Math.sin(car.angle) * car.speed * STEP;
-  const fixed = collideCircle(game.world, nx, ny, 27);
-  car.x = fixed.x;
-  car.y = fixed.y;
-  game.player.x = car.x;
-  game.player.y = car.y;
+  const d = angleDelta(car.angle, want);
+  input.state.steer = Math.max(-1, Math.min(1, d * 2));
+  input.state.throttle = 1;
 }
 
 function stepWorld(game, input, sound, steps) {
@@ -34,21 +53,88 @@ function stepWorld(game, input, sound, steps) {
   }
 }
 
-// A fake input that reports no keys: the scenes move the world directly.
-function nullInput() {
-  return {
-    justPressed: () => false,
-    down: () => false,
-    moveVector: () => ({ x: 0, y: 0 }),
-    endFrame: () => {},
-  };
+// Route to a target along the road grid: the car drives down streets and
+// avenues (straight corridors with no buildings) instead of steering
+// diagonally through city blocks, where it used to get stuck ramming a corner.
+function routeWaypoints(game, tx, ty) {
+  const nearest = (v, list) => list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+  const car = game.player.inCar;
+  const startStreet = nearest(car.y, game.world.streets);
+  const targetAvenue = nearest(tx, game.world.avenues);
+  const targetStreet = nearest(ty, game.world.streets);
+  return [
+    [car.x, startStreet],
+    [targetAvenue, startStreet],
+    [targetAvenue, targetStreet],
+    [tx, ty],
+  ];
+}
+
+function driveRoute(game, input, sound, tx, ty, maxSeconds) {
+  const waypoints = routeWaypoints(game, tx, ty);
+  let leg = 0;
+  const maxSteps = Math.round(maxSeconds * 60);
+  for (let i = 0; i < maxSteps && leg < waypoints.length; i += 1) {
+    const [wx, wy] = waypoints[leg];
+    const d = Math.hypot(game.player.x - wx, game.player.y - wy);
+    if (d < 140) {
+      leg += 1;
+    } else if (leg === waypoints.length - 1 && d < 260) {
+      // Final approach: coast to a stop near the target instead of circling it.
+      input.state.throttle = 0;
+      driveToward(game, input, wx, wy);
+      input.state.throttle = 0;
+    } else {
+      driveToward(game, input, wx, wy);
+    }
+    game.update(STEP, input, sound);
+    input.endFrame();
+  }
+  input.state.throttle = 0;
+  input.state.steer = 0;
+}
+
+function putPlayerInCar(game) {
+  const car = game.cars.find((c) => c.kind === 'parked');
+  if (!car) return null;
+  car.kind = 'player';
+  game.player.inCar = car;
+  game.player.x = car.x;
+  game.player.y = car.y;
+  return car;
 }
 
 export function stageShot(name, game, sound) {
-  const input = nullInput();
-  const silent = { setMuted: () => {}, siren: () => {}, crash: () => {}, engine: () => {}, shot: () => {}, punch: () => {}, missionDone: () => {}, pickup: () => {} };
+  // Every scene drives through the same driver input; scenes that do not
+  // drive leave its throttle at 0, which reads exactly like no keys.
+  const input = driverInput();
+  const silent = { setMuted: () => {}, siren: () => {}, crash: () => {}, engine: () => {}, shot: () => {}, punch: () => {}, missionDone: () => {}, pickup: () => {}, skid: () => {}, checkpoint: () => {}, honk: () => {} };
   game.reset();
   game.screen = SCREEN_PLAY;
+  if (name === 'finale') {
+    // The cover: the Vault Job mid-escape — two stars, police in pursuit, the
+    // Safehouse marker on the HUD and minimap, cash and traffic in frame.
+    game.startMission(5);
+    game.player.x = 1800;
+    game.player.y = 1400;
+    // Grab the vault case (adds two wanted stars) and get into a car.
+    game.update(STEP, input, silent);
+    putPlayerInCar(game);
+    // Drive to just outside the Safehouse completion radius (280px): the shot
+    // catches the escape in progress, not the win screen after delivery.
+    driveRoute(game, input, silent, 1000, 650, 20);
+    // Pull the pursuing police into frame behind the player for the shot.
+    pullPoliceIntoFrame(game);
+    driveRoute(game, input, silent, 1000, 650, 2);
+    return { screen: SCREEN_PLAY };
+  }
+  if (name === 'sprint') {
+    // Sunset Sprint: racing toward the first checkpoint, timer on the HUD.
+    game.startMission(4);
+    putPlayerInCar(game);
+    driveRoute(game, input, silent, 3150, 2150, 12);
+    return { screen: SCREEN_PLAY };
+  }
   if (name === 'city') {
     // Title screen over a living city: traffic and pedestrians move, camera on the player.
     game.screen = SCREEN_TITLE;
@@ -59,43 +145,18 @@ export function stageShot(name, game, sound) {
     // Player in a car, three stars, police in pursuit, mid-chase.
     // startMission('getaway') already puts three stars on the player.
     game.startMission(2);
-    const car = game.cars.find((c) => c.kind === 'parked');
-    if (car) {
-      car.kind = 'player';
-      game.player.inCar = car;
-      game.player.x = car.x;
-      game.player.y = car.y;
-    }
-    for (let i = 0; i < 14 * 60; i += 1) {
-      driveToward(game, 900, 500);
-      game.update(STEP, input, silent);
-    }
+    putPlayerInCar(game);
+    driveRoute(game, input, silent, 900, 500, 16);
     // Pull the pursuing police into frame behind the player for the shot.
-    for (const cop of game.police) {
-      cop.car.x = game.player.x - 220 + game.police.indexOf(cop) * 90;
-      cop.car.y = game.player.y + 130;
-      cop.car.speed = 380;
-    }
-    for (let i = 0; i < 2 * 60; i += 1) {
-      driveToward(game, 900, 500);
-      game.update(STEP, input, silent);
-    }
+    pullPoliceIntoFrame(game);
+    driveRoute(game, input, silent, 900, 500, 2);
     return { screen: SCREEN_PLAY };
   }
   if (name === 'mission') {
     // Mission 1 in progress: driving to the Marina pickup, objective on the HUD.
     game.startMission(0);
-    const car = game.cars.find((c) => c.kind === 'parked');
-    if (car) {
-      car.kind = 'player';
-      game.player.inCar = car;
-      game.player.x = car.x;
-      game.player.y = car.y;
-    }
-    for (let i = 0; i < 10 * 60; i += 1) {
-      driveToward(game, 650, 2300);
-      game.update(STEP, input, silent);
-    }
+    putPlayerInCar(game);
+    driveRoute(game, input, silent, 650, 2300, 14);
     return { screen: SCREEN_PLAY };
   }
   // 'foot': on foot near the plaza, cash pickups and pedestrians around.

@@ -98,6 +98,15 @@ export class SoundBank {
     this.tone(90, 0.25, 'sawtooth', 0.25, 40);
   }
 
+  skid() {
+    this.noise(0.22, 0.08, 500);
+  }
+
+  checkpoint() {
+    this.tone(880, 0.1, 'sine', 0.22);
+    setTimeout(() => this.tone(1318, 0.16, 'sine', 0.22), 90);
+  }
+
   siren() {
     this.tone(700, 0.35, 'sine', 0.1, 1050);
     setTimeout(() => this.tone(1050, 0.35, 'sine', 0.1, 700), 360);

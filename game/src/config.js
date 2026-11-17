@@ -32,13 +32,16 @@ export const CAR = {
 
 export const POLICE = {
   chaseSpeed: 430,
-  ramDamage: 8,
+  ramDamage: 6,
+  ramCooldown: 1.2, // seconds between rams from the same cop: pressure, not a shredder
   arrestRange: 46,
-  bustTime: 2.2,
+  bustTime: 3.0, // on-foot busted timer: fair enough to sprint away from
+  footSpeed: 190,
+  sprintEscapeFactor: 0.5, // bust timer builds half as fast while you sprint
 };
 
 export const WANTED = {
-  decaySeconds: 14, // seconds out of sight before one star drops
+  decaySeconds: 10, // seconds out of sight before one star drops
   starsForKill: 1,
   starsForSteal: 1,
   maxStars: 5,
@@ -91,7 +94,33 @@ export const MISSIONS = [
     steps: ['Collect stash 1 of 3', 'Collect stash 2 of 3', 'Collect stash 3 of 3'],
     reward: 750,
   },
+  {
+    id: 'sprint',
+    title: 'Sunset Sprint',
+    giver: 'Marco Reyes',
+    briefing: 'Three checkpoints across the city, 75 seconds on the clock. Beat it and the street racers pay up.',
+    steps: ['Reach checkpoint 1 of 3', 'Reach checkpoint 2 of 3', 'Reach checkpoint 3 of 3'],
+    reward: 900,
+    timer: 75,
+    timerFromStart: true,
+  },
+  {
+    id: 'vault',
+    title: 'Vault Job',
+    giver: 'Lena Ortiz',
+    briefing: 'The Solmar Bank vault case is unguarded for once. Grab it and get it to the Safehouse — the PD will not take it lightly.',
+    steps: ['Grab the vault case at Solmar Bank', 'Deliver the case to the Safehouse'],
+    reward: 1200,
+  },
 ];
+
+// Crash and skid effects: how long a skid mark lives, and how many the game keeps.
+export const EFFECTS = {
+  skidLife: 6,
+  maxSkids: 150,
+  smokeLife: 1.4,
+  sparkCount: 14,
+};
 
 export const SAVE_KEY = 'sunset-streets-save-v1';
 

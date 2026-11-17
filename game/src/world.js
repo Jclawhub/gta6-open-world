@@ -10,23 +10,41 @@ export const DISTRICTS = [
   { name: 'Central Plaza', x: 1500, y: 1150, w: 600, h: 500 },
   { name: 'The Docks', x: 3000, y: 2000, w: 480, h: 420 },
   { name: 'Old Town Safehouse', x: 500, y: 250, w: 500, h: 350 },
+  { name: 'Solmar Bank', x: 1650, y: 1300, w: 300, h: 200 },
+  { name: 'Sunset Pier', x: 0, y: 1250, w: 260, h: 120 },
 ];
 
+// Landmarks that make the districts read at a glance: the plaza fountain, the
+// wooden pier jutting into the bay, and two rooftop billboards over the avenues.
+export const LANDMARKS = [
+  { type: 'fountain', x: 1800, y: 1400, r: 42 },
+  { type: 'pier', x: 0, y: 1250, w: 200, h: 120 },
+  { type: 'lighthouse', x: 80, y: 2450 },
+  { type: 'billboard', x: 1560, y: 470, w: 180, h: 60, text: 'SOLMAR' },
+  { type: 'billboard', x: 2760, y: 1670, w: 180, h: 60, text: 'SUNSET' },
+];
+
+// The beach strip on the west edge stays open: the first building column
+// starts at x = 204, so the sand and water are never built on.
 export function buildWorld(seed) {
   const rng = mulberry32(seed);
   const buildings = [];
   const pitch = WORLD.block;
-  const roadHalf = WORLD.road / 2;
-  for (let bx = 0; bx < WORLD.width / pitch; bx += 1) {
-    for (let by = 0; by < WORLD.height / pitch; by += 1) {
-      const x0 = bx * pitch + roadHalf + WORLD.sidewalk;
-      const y0 = by * pitch + roadHalf + WORLD.sidewalk;
-      const w = pitch - WORLD.road - WORLD.sidewalk * 2;
-      const h = pitch - WORLD.road - WORLD.sidewalk * 2;
+  // Buildings sit in the cells BETWEEN the roads: each cell is centred on a
+  // 300-line (300, 600, ...) and spans 228px, so the 72px road strips and the
+  // 18px sidewalks stay clear on every side. Roads and buildings agree now —
+  // cars drive on the dark strips, never through a wall.
+  const cell = pitch - WORLD.road; // 228
+  for (let bx = 0; bx < WORLD.width / pitch - 1; bx += 1) {
+    for (let by = 0; by < WORLD.height / pitch - 1; by += 1) {
+      const cx = (bx + 1) * pitch; // 300, 600, ...
+      const cy = (by + 1) * pitch; // 300, 600, ...
+      const x0 = cx - cell / 2 + WORLD.sidewalk;
+      const y0 = cy - cell / 2 + WORLD.sidewalk;
+      const w = cell - WORLD.sidewalk * 2;
+      const h = cell - WORLD.sidewalk * 2;
       // Keep the plaza open in the middle of the map.
       if (bx >= 5 && bx <= 6 && by >= 4 && by <= 5) continue;
-      // The beach strip on the west edge stays open.
-      if (bx === 0) continue;
       const color = pick(rng, COLORS.building);
       const inset = range(rng, 0, 26);
       buildings.push({

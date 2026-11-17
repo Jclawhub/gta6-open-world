@@ -19,6 +19,18 @@ export function pick(rng, list) {
   return list[Math.floor(rng() * list.length)];
 }
 
+// Weighted pick: items[i] is chosen with probability weights[i] / sum(weights).
+export function weightedPick(rng, items, weights) {
+  let total = 0;
+  for (const w of weights) total += w;
+  let roll = rng() * total;
+  for (let i = 0; i < items.length; i += 1) {
+    roll -= weights[i];
+    if (roll <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
 // Fisher-Yates shuffle that returns a new array, driven by the same stream.
 export function shuffle(rng, list) {
   const out = list.slice();
@@ -27,6 +39,13 @@ export function shuffle(rng, list) {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+// Approximately normal (mean 0, stddev 1) via the Box–Muller transform.
+export function gauss(rng) {
+  const u = Math.max(1e-9, rng());
+  const v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
 export function clamp(value, min, max) {

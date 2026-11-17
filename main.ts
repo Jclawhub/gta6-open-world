@@ -6,7 +6,7 @@
 // vendored make.fun library. The game itself is an original top-down open-world
 // crime game set in the fictional coastal city of Solmar Bay: explore on foot and
 // by car, steal cars, outrun the Solmar Bay PD under a five-star wanted system,
-// fight, and run four story missions with a HUD, minimap, save game and sound.
+// fight, and run six story missions with a HUD, minimap, save game and sound.
 // Determinism: the program copies the same files every run and buildDossier is a
 // pure function of them, so two runs write identical bytes to /output.
 //
@@ -15,13 +15,18 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// The entry is the game: fail loudly instead of handing in an empty folder.
+if (!existsSync(join(here, 'game', 'index.html'))) {
+  throw new Error('game/index.html is missing — nothing to hand in');
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
@@ -32,13 +37,27 @@ if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), joi
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
 // files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
 // screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
+const dossier = buildDossier(out, {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+});
+writeFileSync(join(out, 'dossier.json'), dossier);
+
+// A short build summary on stdout (the dossier bytes themselves are unchanged).
+function countFiles(dir) {
+  let n = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    n += entry.isDirectory() ? countFiles(join(dir, entry.name)) : 1;
+  }
+  return n;
+}
+const shotFiles = existsSync(join(out, 'screenshots'))
+  ? readdirSync(join(out, 'screenshots')).filter((f) => statSync(join(out, 'screenshots', f)).isFile())
+  : [];
+if (shotFiles.length === 0) {
+  console.warn('warning: no screenshots in screenshots/ — the entry needs at least 1');
+}
+console.log(`Sunset Streets: dossier ${dossier.length} bytes, ${countFiles(join(out, 'game'))} game file(s), ${shotFiles.length} screenshot(s) (${shotFiles.join(', ')})`);

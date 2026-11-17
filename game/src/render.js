@@ -1,7 +1,7 @@
 // Canvas rendering: the city, cars, people, effects and the whole HUD
 // (health, money, wanted stars, minimap, mission tracker, messages).
-import { WORLD, COLORS, CAR, PLAYER } from './config.js';
-import { DISTRICTS } from './world.js';
+import { WORLD, COLORS, CAR, PLAYER, MISSIONS } from './config.js';
+import { DISTRICTS, LANDMARKS } from './world.js';
 import { SCREEN_TITLE, SCREEN_PAUSE, SCREEN_OVER, SCREEN_WIN } from './game.js';
 
 export class Renderer {
@@ -35,7 +35,9 @@ export class Renderer {
     const shakeY = game.shake > 0 ? (Math.random() - 0.5) * game.shake : 0;
     this.camera.x = game.player.x - vw / 2 + shakeX;
     this.camera.y = game.player.y - vh / 2 + shakeY;
+    game.camera = this.camera;
     this.drawWorld(ctx, game, vw, vh);
+    this.drawSkids(ctx, game);
     this.drawPickups(ctx, game);
     this.drawCars(ctx, game);
     this.drawPeds(ctx, game);
@@ -43,10 +45,11 @@ export class Renderer {
     this.drawBullets(ctx, game);
     this.drawParticles(ctx, game);
     this.drawMissionMarker(ctx, game);
+    this.drawWaypointArrow(ctx, game, vw, vh);
     ctx.restore();
     this.drawHud(ctx, game, vw, vh);
     if (game.screen === SCREEN_TITLE) this.drawTitle(ctx, game, vw, vh);
-    if (game.screen === SCREEN_PAUSE) this.drawPause(ctx, vw, vh);
+    if (game.screen === SCREEN_PAUSE) this.drawPause(ctx, game, vw, vh);
     if (game.screen === SCREEN_OVER) this.drawGameOver(ctx, game, vw, vh);
     if (game.screen === SCREEN_WIN) this.drawWin(ctx, game, vw, vh);
   }
@@ -107,6 +110,67 @@ export class Renderer {
     for (const d of DISTRICTS) {
       ctx.fillText(d.name, d.x + d.w / 2 - cam.x, d.y + d.h / 2 - cam.y);
     }
+    // Landmarks: plaza fountain, wooden pier, rooftop billboards.
+    for (const lm of LANDMARKS) {
+      if (lm.type === 'fountain') {
+        ctx.fillStyle = '#3f8fbf';
+        ctx.beginPath();
+        ctx.arc(lm.x - cam.x, lm.y - cam.y, lm.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#e8e8e8';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.fillStyle = '#bfe3f5';
+        ctx.beginPath();
+        ctx.arc(lm.x - cam.x, lm.y - cam.y, lm.r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (lm.type === 'pier') {
+        ctx.fillStyle = '#8a6a45';
+        ctx.fillRect(lm.x - cam.x, lm.y - cam.y, lm.w, lm.h);
+        ctx.strokeStyle = '#6b4f33';
+        ctx.lineWidth = 2;
+        for (let px = lm.x + 20; px < lm.x + lm.w; px += 40) {
+          ctx.beginPath();
+          ctx.moveTo(px - cam.x, lm.y - cam.y);
+          ctx.lineTo(px - cam.x, lm.y + lm.h - cam.y);
+          ctx.stroke();
+        }
+      } else if (lm.type === 'billboard') {
+        ctx.fillStyle = '#1c2433';
+        ctx.fillRect(lm.x - cam.x, lm.y - cam.y, lm.w, lm.h);
+        ctx.fillStyle = '#ffd23f';
+        ctx.font = 'bold 24px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(lm.text, lm.x + lm.w / 2 - cam.x, lm.y + lm.h / 2 + 8 - cam.y);
+      } else if (lm.type === 'lighthouse') {
+        // Striped tower at the marina, light on top.
+        ctx.fillStyle = '#e8e8e8';
+        ctx.fillRect(lm.x - cam.x, lm.y - cam.y, 26, 64);
+        ctx.fillStyle = '#d94f3d';
+        ctx.fillRect(lm.x - cam.x, lm.y + 16 - cam.y, 26, 12);
+        ctx.fillRect(lm.x - cam.x, lm.y + 40 - cam.y, 26, 12);
+        ctx.fillStyle = '#ffe066';
+        ctx.beginPath();
+        ctx.arc(lm.x + 13 - cam.x, lm.y - 8 - cam.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  drawSkids(ctx, game) {
+    const cam = this.camera;
+    for (const sk of game.skids) {
+      ctx.save();
+      ctx.translate(sk.x - cam.x, sk.y - cam.y);
+      ctx.rotate(sk.angle);
+      ctx.globalAlpha = Math.max(0, sk.life / 6) * 0.4;
+      ctx.fillStyle = '#141414';
+      // Two tyre lines behind the car.
+      ctx.fillRect(-26, -13, 22, 5);
+      ctx.fillRect(-26, 8, 22, 5);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   }
 
   drawCars(ctx, game) {
@@ -218,9 +282,21 @@ export class Renderer {
   drawParticles(ctx, game) {
     const cam = this.camera;
     for (const pt of game.particles) {
-      ctx.globalAlpha = Math.max(0, pt.life * 2);
-      ctx.fillStyle = pt.color;
-      ctx.fillRect(pt.x - cam.x - 3, pt.y - cam.y - 3, 6, 6);
+      if (pt.kind === 'smoke') {
+        ctx.globalAlpha = Math.max(0, pt.life * 0.45);
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x - cam.x, pt.y - cam.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (pt.kind === 'spark') {
+        ctx.globalAlpha = Math.max(0, pt.life * 2);
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x - cam.x - 2, pt.y - cam.y - 2, 4, 4);
+      } else {
+        ctx.globalAlpha = Math.max(0, pt.life * 2);
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x - cam.x - 3, pt.y - cam.y - 3, pt.size ?? 6, pt.size ?? 6);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -231,6 +307,36 @@ export class Renderer {
       const bob = Math.sin(pk.bob) * 4;
       ctx.save();
       ctx.translate(pk.x - cam.x, pk.y - cam.y + bob);
+      if (pk.kind === 'checkpoint') {
+        // Blue diamond flag for the Sunset Sprint.
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#2f9dff';
+        ctx.fillRect(-11, -11, 22, 22);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-11, -11, 22, 22);
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('✓', 0, 4);
+        ctx.restore();
+        continue;
+      }
+      if (pk.kind === 'vaultcase') {
+        // Orange briefcase for the Vault Job.
+        ctx.fillStyle = '#ff8c00';
+        ctx.beginPath();
+        ctx.roundRect(-15, -10, 30, 20, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-5, -13, 10, 4);
+        ctx.restore();
+        continue;
+      }
       ctx.fillStyle = pk.kind === 'stash' ? '#ff8c00' : '#37d67a';
       ctx.beginPath();
       ctx.arc(0, 0, 13, 0, Math.PI * 2);
@@ -265,6 +371,44 @@ export class Renderer {
     ctx.lineTo(cx + 8, cy - pulse - 4);
     ctx.closePath();
     ctx.fill();
+  }
+
+  // Edge arrow pointing at an off-screen mission target, with distance.
+  drawWaypointArrow(ctx, game, vw, vh) {
+    const target = game.missionTarget();
+    if (!target || game.screen !== 'play') return;
+    const cam = this.camera;
+    const tx = target.x + (target.w ?? 0) / 2 - cam.x;
+    const ty = target.y + (target.h ?? 0) / 2 - cam.y;
+    if (tx > 0 && tx < vw && ty > 0 && ty < vh) return; // already on screen
+    const px = game.player.x - cam.x;
+    const py = game.player.y - cam.y;
+    const angle = Math.atan2(ty - py, tx - px);
+    const margin = 46;
+    let ax = Math.max(margin, Math.min(vw - margin, px + Math.cos(angle) * 9999));
+    let ay = Math.max(margin, Math.min(vh - margin, py + Math.sin(angle) * 9999));
+    // Keep the arrow out of the HUD: health panel (top-left), wanted stars
+    // (top-right), mission tracker (top-centre) and minimap (bottom-right).
+    if (ay < 100 && ax < 260) ay = 100;
+    if (ay < 80 && ax > vw - 230) ay = 80;
+    if (ay < 76 && Math.abs(ax - vw / 2) < 320) ay = 76;
+    if (ay > vh - 240 && ax > vw - 250) ay = vh - 240;
+    const meters = Math.round(Math.hypot(tx - px, ty - py) / 10);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#ffe066';
+    ctx.beginPath();
+    ctx.moveTo(16, 0);
+    ctx.lineTo(-10, -11);
+    ctx.lineTo(-10, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#ffe066';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${meters}m`, ax, ay + 28);
   }
 
   drawHud(ctx, game, vw, vh) {
@@ -310,11 +454,21 @@ export class Renderer {
       ctx.fillStyle = '#ffe066';
       ctx.textAlign = 'center';
       ctx.fillText(label, vw / 2, 36);
-      if (m.timer && game.missionStep > 0) {
+      if (m.timer && (game.missionStep > 0 || m.timerFromStart)) {
         ctx.fillStyle = game.missionTimer < 20 ? '#ff5252' : '#fff';
         ctx.font = 'bold 16px system-ui, sans-serif';
         ctx.fillText(`${Math.ceil(game.missionTimer)}s`, vw / 2, 66);
       }
+    }
+    // Mission-complete banner: big gold flash when a mission pays out.
+    if (game.completeFlash > 0) {
+      const alpha = Math.min(1, game.completeFlash);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ffd23f';
+      ctx.font = 'bold 34px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`MISSION COMPLETE  +$${game.lastReward}`, vw / 2, 120);
+      ctx.globalAlpha = 1;
     }
     // Message line.
     if (game.messageTimer > 0 && game.message) {
@@ -375,7 +529,23 @@ export class Renderer {
   }
 
   drawTitle(ctx, game, vw, vh) {
-    ctx.fillStyle = 'rgba(8, 12, 24, 0.72)';
+    // Sunset gradient sky over a skyline silhouette, then the title.
+    const sky = ctx.createLinearGradient(0, 0, 0, vh);
+    sky.addColorStop(0, 'rgba(64, 32, 96, 0.88)');
+    sky.addColorStop(0.55, 'rgba(176, 74, 74, 0.82)');
+    sky.addColorStop(1, 'rgba(232, 148, 64, 0.78)');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.fillStyle = 'rgba(10, 14, 28, 0.85)';
+    const base = vh - 90;
+    const skyline = [0.16, 0.26, 0.12, 0.3, 0.2, 0.34, 0.14, 0.24, 0.18, 0.28, 0.12, 0.22];
+    let sx = 0;
+    const sw = vw / skyline.length;
+    for (const hgt of skyline) {
+      ctx.fillRect(sx, base - vh * hgt, sw - 6, vh * hgt + 90);
+      sx += sw;
+    }
+    ctx.fillStyle = 'rgba(8, 12, 24, 0.45)';
     ctx.fillRect(0, 0, vw, vh);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffd23f';
@@ -386,8 +556,8 @@ export class Renderer {
     ctx.fillText('An open-world crime story in Solmar Bay', vw / 2, vh / 2 - 72);
     ctx.fillStyle = '#fff';
     ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText('Steal cars. Outrun the Solmar Bay PD. Run four missions for Lena Ortiz.', vw / 2, vh / 2 - 30);
-    ctx.fillText('WASD move / drive · E enter or steal a car · Space punch · F shoot · P pause · M mute', vw / 2, vh / 2 + 2);
+    ctx.fillText(`Steal cars. Outrun the Solmar Bay PD. Run ${MISSIONS.length} story missions for Lena Ortiz and Marco Reyes.`, vw / 2, vh / 2 - 30);
+    ctx.fillText('WASD move / drive · E enter or steal a car · Space punch · F shoot · H honk · P pause · M mute', vw / 2, vh / 2 + 2);
     ctx.fillStyle = '#ffd23f';
     ctx.font = 'bold 22px system-ui, sans-serif';
     ctx.fillText('Press ENTER to start', vw / 2, vh / 2 + 56);
@@ -401,15 +571,22 @@ export class Renderer {
     ctx.fillText('A completely original game. No real city, person or game is depicted.', vw / 2, vh - 24);
   }
 
-  drawPause(ctx, vw, vh) {
+  drawPause(ctx, game, vw, vh) {
     ctx.fillStyle = 'rgba(8, 12, 24, 0.6)';
     ctx.fillRect(0, 0, vw, vh);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 40px system-ui, sans-serif';
-    ctx.fillText('Paused', vw / 2, vh / 2 - 20);
+    ctx.fillText('Paused', vw / 2, vh / 2 - 40);
     ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText('P resume · R restart mission · S save game', vw / 2, vh / 2 + 20);
+    const m = game.currentMission();
+    if (m) {
+      ctx.fillStyle = '#ffe066';
+      ctx.fillText(`${m.title} — ${m.steps[game.missionStep] ?? m.steps[m.steps.length - 1]}`, vw / 2, vh / 2 - 4);
+    }
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`$${game.money} · ${game.stats.missionsDone} of ${MISSIONS.length} missions done`, vw / 2, vh / 2 + 24);
+    ctx.fillText('P resume · R restart mission · S save game', vw / 2, vh / 2 + 56);
   }
 
   drawGameOver(ctx, game, vw, vh) {
@@ -422,7 +599,8 @@ export class Renderer {
     ctx.fillStyle = '#fff';
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillText(`You went down with $${game.money} in your pocket.`, vw / 2, vh / 2 + 4);
-    ctx.fillText('Press ENTER to try again', vw / 2, vh / 2 + 44);
+    ctx.fillText(`${game.stats.missionsDone} of ${MISSIONS.length} missions done · ${game.stats.carsStolen} cars stolen`, vw / 2, vh / 2 + 32);
+    ctx.fillText('Press ENTER to try again', vw / 2, vh / 2 + 68);
   }
 
   drawWin(ctx, game, vw, vh) {
@@ -434,7 +612,7 @@ export class Renderer {
     ctx.fillText('SOLMAR BAY IS YOURS', vw / 2, vh / 2 - 40);
     ctx.fillStyle = '#fff';
     ctx.font = '17px system-ui, sans-serif';
-    ctx.fillText(`All four missions done. Final haul: $${game.money}. Cars stolen: ${game.stats.carsStolen}.`, vw / 2, vh / 2 + 4);
+    ctx.fillText(`All ${MISSIONS.length} missions done. Final haul: $${game.money}. Cars stolen: ${game.stats.carsStolen}.`, vw / 2, vh / 2 + 4);
     ctx.fillText('Press ENTER to play again', vw / 2, vh / 2 + 44);
   }
 }

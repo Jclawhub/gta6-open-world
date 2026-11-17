@@ -4,7 +4,7 @@ export class Input {
   constructor(canvas) {
     this.keys = new Set();
     this.pressed = new Set();
-    this.mouse = { x: 0, y: 0, down: false };
+    this.mouse = { x: 0, y: 0, down: false, movedAt: 0 };
     this.canvas = canvas;
     this.onKeyDown = (event) => {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(event.key)) {
@@ -21,6 +21,7 @@ export class Input {
       const rect = canvas.getBoundingClientRect();
       this.mouse.x = event.clientX - rect.left;
       this.mouse.y = event.clientY - rect.top;
+      this.mouse.movedAt = performance.now();
     };
     this.onMouseDown = (event) => {
       this.onMouseMove(event);
@@ -34,16 +35,25 @@ export class Input {
       this.keys.clear();
       this.mouse.down = false;
     };
+    this.onContextMenu = (event) => event.preventDefault();
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
     canvas.addEventListener('mousemove', this.onMouseMove);
     canvas.addEventListener('mousedown', this.onMouseDown);
+    canvas.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('mouseup', this.onMouseUp);
   }
 
   down(key) {
     return this.keys.has(key.toLowerCase());
+  }
+
+  // Mouse aim: the angle from a screen point (sx, sy) to the mouse, or null
+  // when the mouse has not moved in the last 3 seconds (fall back to facing).
+  aimAngle(sx, sy) {
+    if (performance.now() - this.mouse.movedAt > 3000) return null;
+    return Math.atan2(this.mouse.y - sy, this.mouse.x - sx);
   }
 
   justPressed(key) {
@@ -83,6 +93,7 @@ export class Input {
     window.removeEventListener('blur', this.onBlur);
     this.canvas.removeEventListener('mousemove', this.onMouseMove);
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
+    this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     window.removeEventListener('mouseup', this.onMouseUp);
   }
 }
