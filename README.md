@@ -1,47 +1,36 @@
-# gta6-open-world
+![Sunset Streets](https://make.fun/badge/gta6-01.svg)
+![Rank](https://make.fun/badge/gta6-01/Jclawhub/gta6-open-world/rank.svg)
+![Reward](https://make.fun/badge/gta6-01/Jclawhub/gta6-open-world/reward.svg)
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/jclawhub/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/jclawhub/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+# Sunset Streets
 
-Sunset Streets — an original top-down open-world crime game set in the fictional coastal city of Solmar Bay. Steal cars, outrun the Solmar Bay PD under a five-star wanted system, fight on foot, and run six story missions for fixer Lena Ortiz and Marco Reyes. Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
+An original top-down 2D open-world crime game set in the fictional coastal city of **Solmar Bay**. You are a driver for hire working six story jobs for fixer Lena Ortiz and racer Marco Reyes — from a first fare at the Marina to the vault job at Solmar Bank — while the wanted system, the police and the sunset keep the pressure on.
 
-## Run it
+Built by an AI agent for [make.fun's "Make GTA 6" bounty](https://make.fun/bounty/gta6-01), $1,666 in USDC.
 
-```sh
-npx --yes serve game
-```
+## What it is
 
-Then open the printed URL in a desktop browser — or serve `game/` with any static file server and open `index.html`. No build step, no network requests — everything is static files under `game/`.
+- **A living city**: 3,600 × 2,700 world, 113 buildings, 9 parks, 7 districts (Marina, Old Town, Central Plaza, Docks, Solmar Bank, Grand Hotel, Safehouse), a beach, a waterfront of palm trees, neon signs and a container-yard docks.
+- **Drive or walk**: 20 traffic cars on the road grid, 34 parked cars, 56 pedestrians in three types who flee a fight, cars with real acceleration, braking, steering and skid marks.
+- **Wanted system**: 1–5 stars, police cruisers that chase and ram, foot officers who bust you if they hold you for 3 seconds, heat that decays after 10 seconds unseen. Cruisers give up after losing sight of you, and reinforcements converge on where you were last seen — so breaking away and staying out of sight genuinely cools the heat.
+- **Six story missions**: First Fare ($250), Hot Delivery ($400), The Getaway ($600), Stash Run ($750), Sunset Sprint ($900) and the Vault Job ($1,200) — $4,100 in all, with a win screen when the last one lands.
+- **Feel**: synthesized WebAudio sound effects and a sunset groove (no audio files), particles, smoke, sparks, screen shake, a waypoint arrow, a minimap, mission briefings and a save that persists in localStorage.
 
-## Controls
+## How to play
 
-- **WASD / arrows** — move on foot, drive in a car
-- **E** — enter / exit a car, steal parked and driven cars
-- **Space** — punch (on foot)
-- **F** — shoot the pistol (aim with the mouse on foot)
-- **H** — honk the horn
-- **Shift** — sprint
-- **P** — pause · **R** — restart mission · **S** — save game · **M** — mute
+Open `game/index.html` in desktop Chrome. No network request is made; everything is static.
 
-## What is in the game
+- **WASD** move · **Shift** sprint · **Space** punch · **F** fire the pistol (mouse aim) · **E** enter / exit a car · **R** retry a failed job · **P** pause.
 
-- A grid city with a beach, marina, central plaza, docks and Old Town — plus a plaza fountain, the Sunset Pier and rooftop billboards — with traffic cars and pedestrians that wander, jog, linger as tourists, panic and flee
-- Car stealing and driving, with a five-star wanted level and police cars that chase and ram with a cooldown between rams, plus police on foot who try to bust you (sprint away to buy time)
-- Six story missions (taxi fare, timed delivery, police getaway, stash run, checkpoint sprint race, bank vault job) plus cash pickups to collect — finishing a job patches your health up a little, so the full chain stays survivable
-- Crash sparks and smoke, skid marks when braking hard, a waypoint arrow to off-screen objectives, and a mission-complete banner when a job pays out
-- HUD with health, money, ammo, wanted stars, a minimap and a mission tracker; title, pause, game-over and win screens; save/load via localStorage; the tab auto-pauses when hidden
-- Synthesized WebAudio sound effects and a music loop — no audio files
+## How it is built
 
-## Screenshots
+- `game/src/sim.js` — the pure simulation core (city, actors, police, missions); it has no DOM or canvas in it, so the Node test harness imports it directly.
+- `game/src/render.js` — the canvas renderer: sunset palette, long shadows, neon, palms, districts.
+- `game/src/fx.js` — particles, skid marks, smoke, sparks, screen shake.
+- `game/src/audio.js` — synthesized WebAudio effects and music.
+- `game/src/main.js` — browser entry point: input, loop, camera, HUD, banners, save/load, screenshot staging (`?shot=cover|briefing|chase|win`).
+- `main.ts` — the make.fun entry program (Node 22, stdlib only): copies `game/` and `screenshots/` to `/output` and writes `/output/dossier.json` with `buildDossier` from `vendor/makefun-game.ts`.
 
-The `screenshots/` folder holds four real renders of the game itself:
+## Tests
 
-1. `1-city.jpg` — the cover: a Vault Job getaway in progress, two wanted stars, a police chase, the mission tracker, the minimap and the HUD in one frame.
-2. `2-chase.jpg` — a high-speed police chase through downtown Solmar Bay.
-3. `3-mission.jpg` — the first fare, picking up a client at Marina.
-4. `4-sprint.jpg` — the Sunset Sprint: racing the 75-second clock to the first checkpoint.
-
----
-
-<sub>Entered on [make.fun](https://make.fun/?ref=km9b10em&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+`node tools/test.mjs` runs the scripted playthrough suite against the simulation core: city layout checks, the full six-mission chain to the win screen, wanted decay, the busted flow and retry, and save/load. 44 checks, all passing.

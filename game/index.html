@@ -1,24 +1,121 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Sunset Streets — an original open-world crime game in the fictional coastal city of Solmar Bay. Steal cars, outrun the police and run six story missions.">
-<meta name="theme-color" content="#e89440">
-<meta name="color-scheme" content="dark">
-<link rel="icon" href="data:,">
-<title>Sunset Streets — an open-world crime story in Solmar Bay</title>
+<title>Sunset Streets — Solmar Bay</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ff7e5f'/%3E%3Ccircle cx='16' cy='19' r='8' fill='%23ffd76a'/%3E%3Crect x='4' y='22' width='24' height='3' fill='%232e6f8e'/%3E%3C/svg%3E">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1220; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1218; font-family: Georgia, 'Times New Roman', serif; }
+  #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  .hidden { display: none !important; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; color: #fff; }
+  .hud-box { position: absolute; background: rgba(16, 12, 20, 0.66); border: 1px solid rgba(255, 215, 106, 0.35); border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(2px); }
+  #hud-stats { top: 14px; left: 14px; min-width: 210px; }
+  #hud-stats .row { display: flex; justify-content: space-between; gap: 18px; font-size: 17px; line-height: 1.5; }
+  #hud-stats .label { color: #ffd76a; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  #hp-wrap { height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; margin-top: 4px; overflow: hidden; }
+  #hud-hp-bar { height: 100%; width: 100%; background: linear-gradient(90deg, #7dff8a, #ffd76a); border-radius: 4px; }
+  #hud-mission-box { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; max-width: 46vw; }
+  #hud-mission { font-size: 13px; letter-spacing: 1px; color: #ffd76a; text-transform: uppercase; }
+  #hud-objective { font-size: 17px; margin-top: 3px; }
+  #hud-timer { font-size: 26px; font-weight: bold; color: #fff; }
+  #hud-timer.urgent { color: #ff5e5e; }
+  #hud-wanted { top: 14px; right: 14px; text-align: right; }
+  #hud-stars { font-size: 26px; letter-spacing: 3px; color: #ffd76a; text-shadow: 0 0 12px rgba(255, 180, 60, 0.8); }
+  #hud-stars.hot { color: #ff5e5e; text-shadow: 0 0 14px rgba(255, 60, 60, 0.9); }
+  #hud-controls { position: absolute; bottom: 14px; left: 14px; display: flex; gap: 8px; pointer-events: auto; }
+  #hud-controls button { font-family: Georgia, serif; font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255, 215, 106, 0.5); background: rgba(16, 12, 20, 0.7); color: #ffd76a; cursor: pointer; }
+  #hud-controls button:hover { background: rgba(255, 215, 106, 0.25); }
+  #minimap-wrap { position: absolute; right: 14px; bottom: 14px; border: 1px solid rgba(255, 215, 106, 0.4); border-radius: 8px; overflow: hidden; background: rgba(16, 12, 20, 0.66); }
+  #minimap { display: block; width: 190px; height: 142px; }
+  #hud-hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 13px; color: rgba(255,255,255,0.75); text-shadow: 0 1px 3px #000; }
+
+  /* ---- Banners ---- */
+  #banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 8; text-align: center; pointer-events: none; }
+  .banner-title { font-size: 54px; font-weight: bold; letter-spacing: 6px; color: #ffd76a; text-shadow: 0 0 24px rgba(255, 150, 60, 0.9), 0 3px 0 rgba(0,0,0,0.5); }
+  .banner-sub { font-size: 20px; color: #fff; text-shadow: 0 2px 6px #000; margin-top: 6px; }
+
+  /* ---- Panels ---- */
+  .panel { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(20, 10, 18, 0.55); }
+  .panel-card { width: min(560px, 90vw); background: linear-gradient(160deg, #2a1a2e, #1a1218); border: 1px solid rgba(255, 215, 106, 0.55); border-radius: 16px; padding: 34px 38px; color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+  .panel-card h1 { font-size: 40px; letter-spacing: 3px; color: #ffd76a; }
+  .panel-card h2 { font-size: 26px; letter-spacing: 2px; color: #ffd76a; margin-bottom: 6px; }
+  .panel-card .tag { color: #ff9d6b; letter-spacing: 2px; font-size: 13px; text-transform: uppercase; margin: 8px 0 16px; }
+  .panel-card p { font-size: 17px; line-height: 1.55; color: rgba(255,255,255,0.92); margin-bottom: 14px; }
+  .panel-card .keys { font-size: 14px; line-height: 1.9; color: rgba(255,255,255,0.75); }
+  .panel-card .keys b { color: #ffd76a; }
+  .btn { display: inline-block; font-family: Georgia, serif; font-size: 18px; padding: 12px 26px; margin: 10px 8px 0 0; border-radius: 10px; border: none; cursor: pointer; }
+  .btn-gold { background: linear-gradient(180deg, #ffd76a, #e8a83a); color: #241408; font-weight: bold; }
+  .btn-ghost { background: transparent; border: 1px solid rgba(255, 215, 106, 0.6); color: #ffd76a; }
+  .btn:hover { filter: brightness(1.12); }
 </style>
 </head>
 <body>
-<noscript><p style="color:#fff;font-family:system-ui,sans-serif;padding:2rem">Sunset Streets needs JavaScript to run.</p></noscript>
-<canvas id="game" aria-label="Sunset Streets: an open-world crime game. Steal cars, outrun the police and run six story missions across Solmar Bay."></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="hud-stats" class="hud-box">
+    <div class="row"><span class="label">Cash</span><span id="hud-money">$120</span></div>
+    <div class="row"><span class="label">Health</span><span id="hud-hp">100</span></div>
+    <div id="hp-wrap"><div id="hud-hp-bar"></div></div>
+    <div class="row"><span class="label">Ammo</span><span id="hud-ammo">24</span></div>
+  </div>
+  <div id="hud-mission-box" class="hud-box">
+    <div id="hud-mission">Job 1/6</div>
+    <div id="hud-objective">Welcome to Solmar Bay.</div>
+    <div id="hud-timer"></div>
+  </div>
+  <div id="hud-wanted" class="hud-box">
+    <div class="label" style="color:#ffd76a;font-size:12px;letter-spacing:1px;">Wanted</div>
+    <div id="hud-stars">☆☆☆☆☆</div>
+  </div>
+  <div id="hud-controls">
+    <button id="btn-pause">II Pause</button>
+    <button id="btn-sound">♪ Music on</button>
+  </div>
+  <div id="minimap-wrap"><canvas id="minimap" width="190" height="142"></canvas></div>
+  <div id="hud-hint">WASD move · Shift sprint · Space punch · F fire · E enter car · Enter start job · R retry · P pause</div>
+</div>
+
+<div id="banner" class="hidden">
+  <div class="banner-title"></div>
+  <div class="banner-sub"></div>
+</div>
+
+<div id="title-screen" class="panel">
+  <div class="panel-card">
+    <h1>SUNSET STREETS</h1>
+    <div class="tag">Solmar Bay · an original open-world crime story</div>
+    <p>You are a driver for hire in Solmar Bay, a coastal city that never cools down. Six jobs stand between you and the big time — from a first fare at the Marina to the vault at Solmar Bank. The cops are always watching. The sunset is always burning.</p>
+    <p class="keys"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>Space</b> punch &nbsp;·&nbsp; <b>F</b> fire pistol (mouse aim) &nbsp;·&nbsp; <b>E</b> enter / exit car &nbsp;·&nbsp; <b>R</b> retry job &nbsp;·&nbsp; <b>P</b> pause</p>
+    <button id="btn-start" class="btn btn-gold">Start the story</button>
+    <button id="btn-continue" class="btn btn-ghost">Continue saved game</button>
+  </div>
+</div>
+
+<div id="briefing" class="panel hidden">
+  <div class="panel-card">
+    <h2 id="brief-title">Job 1 — First Fare</h2>
+    <div class="tag" id="brief-giver">from Lena Ortiz</div>
+    <p id="brief-text"></p>
+    <button id="btn-brief-start" class="btn btn-gold">Start job</button>
+  </div>
+</div>
+
+<div id="endscreen" class="panel hidden">
+  <div class="panel-card">
+    <h2 id="end-title">SOLMAR BAY IS YOURS</h2>
+    <div class="tag" id="end-sub"></div>
+    <p id="end-stats"></p>
+    <button id="btn-retry" class="btn btn-gold">Retry job</button>
+    <button id="btn-restart" class="btn btn-ghost">New game</button>
+  </div>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

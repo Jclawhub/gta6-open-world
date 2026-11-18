@@ -1,69 +1,74 @@
-// Sunset Streets — a working gta6-01 entry (Node 22, standard library only).
-// The game is this directory's game/ folder: plain static files a desktop
-// browser loads offline (game/index.html and its ES modules, no library, no
-// network request). This program hands it in: it copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json,
-// the summary the judge reads, with the vendored make.fun library. The game
-// itself is an original top-down open-world crime game set in the fictional
-// coastal city of Solmar Bay: explore on foot and by car, steal cars, outrun
-// the Solmar Bay PD under a five-star wanted system, fight, and run six story
-// missions with a HUD, minimap, save game and sound.
-// Determinism: the program copies the same files every run and buildDossier
-// is a pure function of them, so two runs write identical bytes to /output.
+// Sunset Streets — the make.fun gta6-01 entry program (Node 22, stdlib only).
 //
-// Serve it locally with any static server over game/, then open index.html
-// in a desktop browser (for example: npx --yes serve game).
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// It hands the game in: copies game/ and screenshots/ from beside this file
+// into /output and writes /output/dossier.json, the summary the judge reads,
+// using the vendored make.fun library (vendor/makefun-game.ts, unchanged).
+// The program runs twice in the grader and both runs must write the same
+// bytes, so nothing here depends on the clock, the network or the filesystem
+// outside this repository. Outside the grader, MAKEFUN_OUTPUT_DIR stands in
+// for /output:
+//
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// The entry is the game: fail loudly instead of handing in an empty folder.
-if (!existsSync(join(here, 'game', 'index.html'))) {
-  throw new Error('game/index.html is missing — nothing to hand in');
+// Everything the entry hands in must exist, and every screenshot must fit
+// the gate's 256 KiB cap before the dossier is built.
+function requireDir(name) {
+  const p = join(here, name);
+  if (!existsSync(p) || !statSync(p).isDirectory()) {
+    throw new Error(`main.ts: expected a ${name}/ directory beside main.ts`);
+  }
+  return p;
 }
+
+function checkScreenshots(dir) {
+  const files = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
+  if (files.length < 1) {
+    throw new Error('main.ts: expected at least 1 screenshot in screenshots/');
+  }
+  if (files.length > 4) {
+    throw new Error(`main.ts: ${files.length} screenshots, but the gate allows at most 4`);
+  }
+  for (const f of files) {
+    if (statSync(join(dir, f)).size > 262144) {
+      throw new Error(`main.ts: screenshot ${f} is over the 256 KiB cap`);
+    }
+  }
+}
+
+const gameDir = requireDir('game');
+const shotsDir = requireDir('screenshots');
+checkScreenshots(shotsDir);
+
+// The grader refuses any name under /output that starts with a dot, so the
+// copy skips dotfiles at every depth (no .gitkeep, no .DS_Store).
+const keepVisible = (path) => !basename(path).startsWith('.');
 
 mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+cpSync(gameDir, join(out, 'game'), { recursive: true, filter: keepVisible });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-}
+cpSync(shotsDir, join(out, 'screenshots'), { recursive: true, filter: keepVisible });
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
-// bytes; the others refuse an entry the scorer would refuse (more than 4
-// screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of
-// game files, in all, or a path under game/ over 1000 bytes: game/ counts
-// beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
-const dossier = buildDossier(out, {
-  text_max_bytes: 163840,
-  screenshots: { max: 4, max_bytes: 262144 },
-  game_max_files: 993,
-  game_max_bytes: 50331648,
-  game_path_max_bytes: 1000,
-});
-writeFileSync(join(out, 'dossier.json'), dossier);
+// dossier's bytes; the rest refuse an entry the scorer would refuse anyway
+// (more than 4 screenshots or one over 256 KiB; more than 993 files in game/
+// or 48 MiB of game files in all, or a game path over 1000 bytes).
+writeFileSync(
+  join(out, 'dossier.json'),
+  buildDossier(out, {
+    text_max_bytes: 163840,
+    screenshots: { max: 4, max_bytes: 262144 },
+    game_max_files: 993,
+    game_max_bytes: 50331648,
+    game_path_max_bytes: 1000,
+  }),
+);
 
-// A short build summary on stdout (the dossier bytes themselves are unchanged).
-function countFiles(dir) {
-  let n = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    n += entry.isDirectory() ? countFiles(join(dir, entry.name)) : 1;
-  }
-  return n;
-}
-const shotFiles = existsSync(join(out, 'screenshots'))
-  ? readdirSync(join(out, 'screenshots')).filter((f) => statSync(join(out, 'screenshots', f)).isFile())
-  : [];
-if (shotFiles.length === 0) {
-  console.warn('warning: no screenshots in screenshots/ — the entry needs at least 1');
-} else if (shotFiles.length < 4) {
-  console.warn(`warning: only ${shotFiles.length} screenshot(s) — the entry shows up to 4`);
-}
-console.log(`Sunset Streets: dossier ${dossier.length} bytes, ${countFiles(join(out, 'game'))} game file(s), ${shotFiles.length} screenshot(s) (${shotFiles.join(', ')})`);
+console.log(`Sunset Streets handed in: game/ + screenshots/ copied to ${out}, dossier.json written.`);
